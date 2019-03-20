@@ -1,13 +1,13 @@
-#ifndef _OVERMAX_RULE_H
-#define _OVERMAX_RULE_H
+#ifndef _SIMPLE_EXPRESSION_RULE_H
+#define _SIMPLE_EXPRESSION_RULE_H
 /*
- * FogLAMP OutOfBound class
+ * FogLAMP SimpleExpression class
  *
  * Copyright (c) 2019 Dianomic Systems
  *
  * Released under the Apache 2.0 Licence
  *
- * Author: Massimiliano Pinto
+ * Author: Amandeep Singh Arora
  */
 #include <plugin.h>
 #include <plugin_manager.h>
@@ -20,7 +20,7 @@
 #define MAX_EXPRESSION_VARIABLES 20
 
 /**
- * OutOfBound class, derived from Notification BuiltinRule
+ * SimpleExpression class, derived from Notification BuiltinRule
  */
 class SimpleExpression: public BuiltinRule
 {

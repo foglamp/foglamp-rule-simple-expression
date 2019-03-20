@@ -5,7 +5,7 @@
  *
  * Released under the Apache 2.0 Licence
  *
- * Author: Massimiliano Pinto
+ * Author: Amandeep Singh Arora
  */
 
 #include <plugin_api.h>
@@ -24,40 +24,36 @@
 #include "simple_expression.h"
 
 #define RULE_NAME "SimpleExpression"
-#define DEFAULT_TIME_INTERVAL "30"
 
 /**
  * Rule specific default configuration
  *
- * The "rule_config" property is a JSON object
- * with a "rules" array:
+ * The "rule_config" property is a JSON object with asset name, 
+ * list of datapoints used in expression and the boolean expression itself:
  *
  * Example:
     {
-      "asset": {
-        "description": "The asset name for which notifications will be generated.",
-        "name": "humidtemp"
-      },
-      "datapoints": [
-        {
-          "type": "float",
-          "name": "humidity"
-        },
-        {
-          "type": "float",
-          "name": "temperature"
-        }
-      ],
-      "expression": {
-        "description": "The expression to evaluate",
-        "name": "Expression",
-        "type": "string",
-        "value": "clamp(-1,sin(2 * pi * humidity) + cos(temperature / 2 * pi),+1)"
-      }
-    }
-
- * If array size is greater than one, each asset with datapoint(s) is evaluated.
- * If all assets evaluations are true, then the notification is sent.
+		"asset": {
+			"description": "The asset name for which notifications will be generated.",
+			"name": "modbus"
+		},
+		"datapoints": [{
+			"type": "float",
+			"name": "humidity"
+		}, {
+			"type": "float",
+			"name": "temperature"
+		}],
+		"expression": {
+			"description": "The expression to evaluate",
+			"name": "Expression",
+			"type": "string",
+			"value": "if( humidity > 50, 1, 0)"
+		}
+	}
+ 
+ * Expression is composed of datapoint values within given asset name.
+ * And if the value of boolean expression toggles, then the notification is sent.
  */
 
 #define xstr(s) str(s)
@@ -283,6 +279,7 @@ void plugin_reconfigure(PLUGIN_HANDLE handle,
 // End of extern "C"
 };
 
+#if 0
 /**
  * Check whether the input datapoint
  * is a NUMBER and its value is greater than configured DOUBLE limit
@@ -334,6 +331,7 @@ bool checkDoubleLimit(const Value& point, double limitValue)
 
 	return ret;
 }
+#endif
 
 /**
  * Evaluate datapoints values for the given asset name

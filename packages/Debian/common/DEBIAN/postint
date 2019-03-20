@@ -28,7 +28,7 @@
 set -e
 
 set_files_ownership () {
-    chown -R root:root /usr/local/foglamp/plugins/notificationRule/OutOfBound
+    chown -R root:root /usr/local/foglamp/plugins/notificationRule/SimpleExpression
 }
 
 set_files_ownership
