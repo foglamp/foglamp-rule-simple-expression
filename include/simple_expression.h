@@ -28,8 +28,8 @@ class SimpleExpression: public BuiltinRule
 		SimpleExpression();
 		~SimpleExpression();
 
-		void	configure(const ConfigCategory& config);
-		bool	evalAsset(const Value& assetValue, RuleTrigger* rule);
+		bool	configure(const ConfigCategory& config);
+		bool	evalAsset(const Value& assetValue);
 		void	lockConfig() { m_configMutex.lock(); };
 		void	unlockConfig() { m_configMutex.unlock(); };
 

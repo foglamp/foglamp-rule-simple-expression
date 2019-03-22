@@ -59,7 +59,14 @@
 #define xstr(s) str(s)
 #define str(s) #s
 
-#define DEF_RULE_CFG_VALUE  "{\"asset\":{\"description\":\"The asset name for which notifications will be generated.\",\"name\":\"modbus\"},\"datapoints\":[{\"type\":\"float\",\"name\":\"humidity\"},{\"type\":\"float\",\"name\":\"temperature\"}],\"expression\":{\"description\":\"The expression to evaluate\",\"name\":\"Expression\",\"type\":\"string\",\"value\":\"if( humidity > 50, 1, 0)\"}}"
+#if 0
+#define DEF_RULE_CFG_VALUE  "xstr({\"asset\":{ )" \
+								"xstr(\"description\":\"The asset name for which notifications will be generated.\",\"name\":\"modbus\"},)"  \
+								"xstr(\"datapoints\":[{\"type\":\"float\",\"name\":\"humidity\"},{\"type\":\"float\",\"name\":\"temperature\"}],)" \
+								"xstr(\"expression\":{\"description\":\"The expression to evaluate\",\"name\":\"Expression\",\"type\":\"string\",\"value\":\"if( humidity > 50, 1, 0)\"}})"
+#endif
+
+#define DEF_RULE_CFG_VALUE  "{\"asset\":{\"description\":\"The asset name for which notifications will be generated.\",\"name\":\"modbus\"},\"datapoints\":[{\"type\":\"float\",\"name\":\"humidity\"},{\"type\":\"float\",\"name\":\"temperature\"}],\"expression\":{\"description\":\"The expression to evaluate\",\"name\":\"Expression\",\"type\":\"string\",\"value\":\"if( ((humidity > 50)), 1, 0)\"}}"
 
 #define RULE_DEFAULT_CONFIG \
 			"\"description\": { " \
@@ -114,8 +121,15 @@ PLUGIN_HANDLE plugin_init(const ConfigCategory& config)
 {
 	PRINT_FUNC;
 	SimpleExpression* handle = new SimpleExpression();
-	handle->configure(config);
+	bool rv = handle->configure(config);
 
+	if(rv == false)
+	{
+		delete handle;
+		Logger::getLogger()->info("plugin_init failed");
+		handle = NULL;
+	}
+	
 	return (PLUGIN_HANDLE)handle;
 }
 
@@ -183,7 +197,6 @@ string plugin_triggers(PLUGIN_HANDLE handle)
 	// Release lock
 	rule->unlockConfig();
 
-	PRINT_FUNC;
 	Logger::getLogger()->info("plugin_triggers(): ret=%s", ret.c_str());
 
 	return ret;
@@ -202,7 +215,7 @@ string plugin_triggers(PLUGIN_HANDLE handle)
 bool plugin_eval(PLUGIN_HANDLE handle,
 		 const string& assetValues)
 {
-	//Logger::getLogger()->info("plugin_eval(): assetValues=%s", assetValues.c_str());
+	Logger::getLogger()->info("plugin_eval(): assetValues=%s", assetValues.c_str());
 	Document doc;
 	doc.Parse(assetValues.c_str());
 	if (doc.HasParseError())
@@ -231,8 +244,8 @@ bool plugin_eval(PLUGIN_HANDLE handle,
 			const Value& assetValue = doc[assetName.c_str()];
 
 			// Set evaluation
-			eval = rule->evalAsset(assetValue, NULL);
-			Logger::getLogger()->info("plugin_eval(): eval=%s", eval?"true":"false");
+			eval = rule->evalAsset(assetValue);
+			//Logger::getLogger()->info("plugin_eval(): eval=%s", eval?"true":"false");
 		}
 	}
 
@@ -273,65 +286,14 @@ void plugin_reconfigure(PLUGIN_HANDLE handle,
 	PRINT_FUNC;
 	SimpleExpression* rule = (SimpleExpression *)handle;
 	ConfigCategory  config("newCfg", newConfig);
-	rule->configure(config);
+	bool rv = rule->configure(config);
+
+	if(rv == false)
+		Logger::getLogger()->info("plugin_reconfigure failed");
 }
 
 // End of extern "C"
 };
-
-#if 0
-/**
- * Check whether the input datapoint
- * is a NUMBER and its value is greater than configured DOUBLE limit
- *
- * @param    point		Current input datapoint
- * @param    limitValue		The DOUBLE limit value
- * @return			True if limit is hit,
- *				false otherwise
- */
-bool checkDoubleLimit(const Value& point, double limitValue)
-{
-	bool ret = false;
-
-	// Check config datapoint type
-	if (point.GetType() == kNumberType)
-	{
-		if (point.IsDouble())
-		{       
-			if (point.GetDouble() > limitValue)
-			{       
-				ret = true;
-			}
-		}
-		else
-		{
-  			if (point.IsInt() ||
-			    point.IsUint() ||
-			    point.IsInt64() ||
-			    point.IsUint64())
-			{
-				if (point.IsInt() ||
-				    point.IsUint())
-				{
-					if (point.GetInt() > limitValue)
-					{
-						ret = true;
-					}
-				}
-				else
-				{
-					if (point.GetInt64() > limitValue)
-					{
-						ret = true;
-					}
-				}
-			}
-		}
-	}
-
-	return ret;
-}
-#endif
 
 /**
  * Evaluate datapoints values for the given asset name
@@ -342,7 +304,7 @@ bool checkDoubleLimit(const Value& point, double limitValue)
  * @return			True if evalution succeded,
  *				false otherwise.
  */
-bool SimpleExpression::evalAsset(const Value& assetValue, RuleTrigger* rule)
+bool SimpleExpression::evalAsset(const Value& assetValue)
 {
 	bool assetEval = false;
 	
@@ -416,6 +378,7 @@ bool SimpleExpression::evalAsset(const Value& assetValue, RuleTrigger* rule)
  */
 SimpleExpression::SimpleExpression() : BuiltinRule()
 {
+	m_triggerExpression = NULL;
 }
 
 /**
@@ -423,6 +386,7 @@ SimpleExpression::SimpleExpression() : BuiltinRule()
  */
 SimpleExpression::~SimpleExpression()
 {
+	delete m_triggerExpression;
 }
 
 /**
@@ -430,7 +394,7 @@ SimpleExpression::~SimpleExpression()
  *
  * @param    config	The configuration object to process
  */
-void SimpleExpression::configure(const ConfigCategory& config)
+bool SimpleExpression::configure(const ConfigCategory& config)
 {
 	PRINT_FUNC;
 	string JSONrules = config.getValue("rule_config");
@@ -444,53 +408,30 @@ void SimpleExpression::configure(const ConfigCategory& config)
 	{
 		if (!doc.HasMember("asset") || !doc.HasMember("datapoints") || !doc.HasMember("expression"))
 		{
-			return;
+			return false;
 		}
-		PRINT_FUNC;
 
 		const Value& asset = doc["asset"];
 		string assetName = asset["name"].GetString();
 		if (assetName.empty())
 		{
-			return;
+			return false;
 		}
-		PRINT_FUNC;
 
 		const Value& exprVal = doc["expression"];
 		string expr = exprVal["value"].GetString();
 		if (expr.empty())
 		{
-			return;
+			return false;
 		}
-		PRINT_FUNC;
 		
 		// evaluation_type can be empty, it means latest value
-
-		// Configuration change is protected by a lock
-		this->lockConfig();
-		if (this->hasTriggers())
-		{       
-			this->removeTriggers();
-		}
-		this->addTrigger(assetName, NULL);
-		Logger::getLogger()->info("Added trigger: assetName=%s", assetName.c_str());
-		// Release lock
-		this->unlockConfig();
-
-		PRINT_FUNC;
 		
 		const Value& datapoints = doc["datapoints"];
-		bool evalAlldatapoints = true;
 		bool foundDatapoints = false;
-		if (doc.HasMember("eval_all_datapoints") &&
-		    doc["eval_all_datapoints"].IsBool())
-		{
-			evalAlldatapoints = doc["eval_all_datapoints"].GetBool();
-		}
 
 		if (datapoints.IsArray())
 		{
-			PRINT_FUNC;
 			vector<Datapoint *>	vec;
 			for (auto & d : datapoints.GetArray())
 			{
@@ -516,23 +457,42 @@ void SimpleExpression::configure(const ConfigCategory& config)
 			}
 			if (vec.size() <= 0)
 			{
-				Logger::getLogger()->info("Cannot find any valid datapoint");
-				return;
+				Logger::getLogger()->info("Couldn't find any valid datapoint in expr rule plugin config");
+				return false;
 			}
 			else
-				Logger::getLogger()->info("vec.size()=%d", vec.size());
+			{
+				Logger::getLogger()->info("Found %d datapoints in expr rule plugin config", vec.size());
 
-			// TODO: take care of config change mutex in all 'return' cases
+				// Configuration change is protected by a lock
+				this->lockConfig();
 
-			m_triggerExpression = new Evaluator(vec, expr);
+				try
+				{
+					m_triggerExpression = new Evaluator(vec, expr);
+				}
+				catch (...)
+				{
+					this->unlockConfig();
+					Logger::getLogger()->error("SimpleExpression::configure() failed");
+					return false;
+				}
 
-			
-		}
-		if (!foundDatapoints)
-		{
-			// Log message
+				if (this->hasTriggers())
+				{       
+					this->removeTriggers();
+				}
+				this->addTrigger(assetName, NULL);
+				Logger::getLogger()->info("Added trigger: assetName=%s", assetName.c_str());
+				
+				// Release lock
+				this->unlockConfig();
+
+				return true;
+			}
 		}
 	}
+	return false;
 }
 
 /**
@@ -544,6 +504,7 @@ void SimpleExpression::configure(const ConfigCategory& config)
  */
 SimpleExpression::Evaluator::Evaluator(vector<Datapoint *> &datapoints, const string& expression) : m_varCount(0)
 {
+	PRINT_FUNC;
 	//vector<Datapoint *>	datapoints = reading->getReadingData();
 	for (auto & dp : datapoints)
 	{
@@ -562,13 +523,28 @@ SimpleExpression::Evaluator::Evaluator(vector<Datapoint *> &datapoints, const st
 
 	for (int i = 0; i < m_varCount; i++)
 	{
+		m_variables[i] = NAN;
+		Logger::getLogger()->info("m_symbolTable.add_variable(): [%d], m_variableNames=%s, m_variables=%lf", i, m_variableNames[i].c_str(), m_variables[i]);
 		m_symbolTable.add_variable(m_variableNames[i], m_variables[i]);
 	}
 
-	m_symbolTable.add_constants();
+	typedef exprtk::parser_error::type error_t;
+	
+	bool rv = true;
+	rv = m_symbolTable.add_constants();
+	if (rv == false)
+	{
+		Logger::getLogger()->error("m_symbolTable.add_constants() failed");
+		throw new exception();
+	}
 	m_expression.register_symbol_table(m_symbolTable);
-	m_parser.compile(expression.c_str(), m_expression);
-
+	rv=true;
+	rv = m_parser.compile(expression.c_str(), m_expression);
+	if (rv == false)
+	{
+		Logger::getLogger()->error("Failed to compile expression: Error: %s\tExpression: %s", m_parser.error().c_str(), expression.c_str());
+		throw new exception();
+	}
 }
 
 /**
@@ -592,7 +568,7 @@ bool SimpleExpression::Evaluator::evaluate(vector<Datapoint *>& datapoints)
 		else if (dpvalue.getType() == DatapointValue::T_FLOAT)
 		{	
 			double d = static_cast <double> (rand()) /( static_cast <double> (RAND_MAX/(100)));
-			value = dpvalue.toDouble() + d;
+			value = dpvalue.toDouble() + d;  // TODO: Test code, need to remove, when able to get good data from south plugin
 			Logger::getLogger()->info("SimpleExpression::Evaluator::evaluate(): name=%s, value=%lf", name.c_str(), value);
 		}
 		
@@ -601,11 +577,16 @@ bool SimpleExpression::Evaluator::evaluate(vector<Datapoint *>& datapoints)
 			if (m_variableNames[i].compare(name) == 0)
 			{
 				m_variables[i] = value;
+				//Logger::getLogger()->info("SimpleExpression::Evaluator::evaluate(): UPDATED: m_variableNames[i]=%s, m_variables[i]=%lf", m_variableNames[i].c_str(), m_variables[i]);
 				break;
 			}
+			//else
+				//Logger::getLogger()->info("SimpleExpression::Evaluator::evaluate(): NOT UPDATED: m_variableNames[i]=%s, m_variables[i]=%lf", m_variableNames[i].c_str(), m_variables[i]);
 		}
 	}
 	//Logger::getLogger()->info("SimpleExpression::Evaluator::evaluate(): m_expression.value()=%lf", m_expression.value());
-	return m_expression.value() != 0.0;
+	if (isnan(m_expression.value()))
+		Logger::getLogger()->error("SimpleExpression::Evaluator::evaluate(): unable to evaluate expression");
+	return (m_expression.value() == 1.0);
 }
 
