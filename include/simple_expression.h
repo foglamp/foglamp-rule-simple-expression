@@ -10,12 +10,12 @@
  * Author: Amandeep Singh Arora
  */
 #include <plugin.h>
-#include <plugin_manager.h>
 #include <config_category.h>
 #include <rule_plugin.h>
 #include <builtin_rule.h>
 #include <exprtk.hpp>
-#include <datapoint.h>
+
+class Datapoint;
 
 #define MAX_EXPRESSION_VARIABLES 20
 
