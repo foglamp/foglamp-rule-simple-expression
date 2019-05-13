@@ -502,7 +502,7 @@ bool SimpleExpression::Evaluator::evaluate(vector<Datapoint *>& datapoints)
 		}
 	}
 	Logger::getLogger()->debug("SimpleExpression::Evaluator::evaluate(): m_expression.value()=%lf", m_expression.value());
-	if (isnan(m_expression.value()))
+	if (std::isnan(m_expression.value()))
 		Logger::getLogger()->error("SimpleExpression::Evaluator::evaluate(): unable to evaluate expression");
 	return (m_expression.value() == 1.0);
 }
