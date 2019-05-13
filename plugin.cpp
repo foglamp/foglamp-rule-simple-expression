@@ -372,7 +372,7 @@ bool SimpleExpression::configure(const ConfigCategory& config)
 						dpv = new DatapointValue(1.0f);
 					else
 					{
-						Logger::getLogger()->info("Cannot handle datapoint: name=%s, type=%s, skipping...", dataPointName, datatype);
+						Logger::getLogger()->info("Cannot handle datapoint: name=%s, type=%s, skipping...", dataPointName.c_str(), datatype.c_str());
 						continue;
 					}
 					vec.emplace_back(new Datapoint(dataPointName, *dpv));
