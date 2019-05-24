@@ -63,7 +63,12 @@
 				"\"default\": \"Generate a notification if all configured assets trigger\", " \
 				"\"displayName\" : \"Rule\", " \
 				"\"order\": \"1\" }, " \
-			"\"rule_config\": { \"description\": \"The array of rules.\", \"type\": \"JSON\", \"default\": " xstr(DEF_RULE_CFG_VALUE) ", \"displayName\" : \"Configuration\", \"order\": \"2\" }"
+			"\"rule_config\": { \"description\": \"The array of rules.\", \"type\": \"JSON\", \"default\": " xstr(DEF_RULE_CFG_VALUE) ", \"displayName\" : \"Configuration\", \"order\": \"2\" }, " \
+			"\"asset\": { \"description\": \"The Asset name.\", \"type\": \"string\", " \
+				"\"default\": \"Expression\", \"displayName\" : \"Asset\", \"order\": \"3\"}, " \
+			"\"expression\": {\"description\": \"The expression to evaluate\", " \
+				"\"name\": \"Expression\", \"type\": \"string\", \"default\": \"if( ((humidity > 50)), 1, 0)\", " \
+				"\"displayName\" : \"The expression to evaluate\", \"order\": \"4\"}"
 
 #define BUITIN_RULE_DESC "\"plugin\": {\"description\": \"" RULE_NAME " notification rule\", " \
 			"\"type\": \"string\", \"default\": \"" RULE_NAME "\", \"readonly\": \"true\"}"
@@ -324,32 +329,14 @@ SimpleExpression::~SimpleExpression()
 bool SimpleExpression::configure(const ConfigCategory& config)
 {
 	string JSONrules = config.getValue("rule_config");
-	//Logger::getLogger()->debug("JSONrules=%s", JSONrules.c_str());
+	string assetName =  config.getValue("asset");
+	string expression =  config.getValue("expression");
 
 	Document doc;
 	doc.Parse(JSONrules.c_str());
 
 	if (!doc.HasParseError())
 	{
-		if (!doc.HasMember("asset") || !doc.HasMember("datapoints") || !doc.HasMember("expression"))
-		{
-			return false;
-		}
-
-		const Value& asset = doc["asset"];
-		string assetName = asset["name"].GetString();
-		if (assetName.empty())
-		{
-			return false;
-		}
-
-		const Value& exprVal = doc["expression"];
-		string expr = exprVal["value"].GetString();
-		if (expr.empty())
-		{
-			return false;
-		}
-		
 		// evaluation_type can be empty, it means latest value
 		
 		const Value& datapoints = doc["datapoints"];
@@ -394,7 +381,7 @@ bool SimpleExpression::configure(const ConfigCategory& config)
 
 				try
 				{
-					m_triggerExpression = new Evaluator(vec, expr);
+					m_triggerExpression = new Evaluator(vec, expression);
 				}
 				catch (...)
 				{
