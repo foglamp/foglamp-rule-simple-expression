@@ -7,7 +7,7 @@
  *
  * Released under the Apache 2.0 Licence
  *
- * Author: Amandeep Singh Arora
+ * Author: Amandeep Singh Arora, Massimiliano Pinto
  */
 #include <plugin.h>
 #include <config_category.h>
@@ -25,6 +25,37 @@ class Datapoint;
 class SimpleExpression: public BuiltinRule
 {
 	public:
+		class Evaluator {
+			public:
+				Evaluator();
+				bool	parserCompile(const std::string& expression)
+				{
+					return m_parser.compile(expression.c_str(),
+								m_expression);
+				};
+				std::string
+					getError()
+				{
+					return m_parser.error();
+				};
+				void registerSymbolTable()
+				{
+					m_expression.register_symbol_table(m_symbolTable);
+				};
+
+				void	addVariable(const std::string& dapointName, double value);
+				int	getVarCount() { return m_varCount; };
+				double	evaluate() { return m_expression.value(); };
+
+			private:
+				exprtk::expression<double>	m_expression;
+				exprtk::symbol_table<double>	m_symbolTable;
+				exprtk::parser<double>		m_parser;
+				double				m_variables[MAX_EXPRESSION_VARIABLES];
+				std::string			m_variableNames[MAX_EXPRESSION_VARIABLES];
+				int				m_varCount;
+		};
+	public:
 		SimpleExpression();
 		~SimpleExpression();
 
@@ -35,27 +66,19 @@ class SimpleExpression: public BuiltinRule
 
 		void	setTrigger(const std::string& expression)
 			{
-				m_trigger = expression;
+				m_expression = expression;
 			};
+		const std::string&
+			getTrigger() { return m_expression; };
+
+		Evaluator*
+			getEvaluator() { return m_triggerExpression; };
 
 	private:
 		std::mutex	m_configMutex;
-		
-		class Evaluator {
-			public:
-				Evaluator(std::vector<Datapoint *> &datapoints, const std::string& expression);
-				bool		evaluate(std::vector<Datapoint *>& datapoints);
-			private:
-				exprtk::expression<double>	m_expression;
-				exprtk::symbol_table<double>	m_symbolTable;
-				exprtk::parser<double>		m_parser;
-				double				m_variables[MAX_EXPRESSION_VARIABLES];
-				std::string			m_variableNames[MAX_EXPRESSION_VARIABLES];
-				int				m_varCount;
-		};
-		std::string		m_trigger;
-		bool			m_pendingReconfigure;
-		Evaluator		*m_triggerExpression;
+		std::string	m_expression;
+		bool		m_pendingReconfigure;
+		Evaluator	*m_triggerExpression;
 };
 
 #endif
