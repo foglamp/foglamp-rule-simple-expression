@@ -29,8 +29,10 @@ Example:
     }
   
 Expression is composed of datapoint values within given asset name.
+
 There is no need to provide datapoint names because names and values
 are dynamically added when "plugin_eval" is called.
+
 If the value of expression is true, then the notification is sent.
 
 Expression may contain any of the following...
