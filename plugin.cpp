@@ -19,12 +19,10 @@
 #include "simple_expression.h"
 
 #define RULE_NAME "SimpleExpression"
+#define RULE_DESCRIPTION  "SimpleExpression notification rule"
 
 /**
- * Rule specific default configuration
- *
- * The "rule_config" property is a JSON object with asset name, 
- * list of datapoints used in expression and the boolean expression itself:
+ * Plugin configuration
  *
  * Example:
     {
@@ -32,46 +30,57 @@
 			"description": "The asset name for which notifications will be generated.",
 			"name": "modbus"
 		},
-		"datapoints": [{
-			"type": "float",
-			"name": "humidity"
-		}, {
-			"type": "float",
-			"name": "temperature"
-		}],
 		"expression": {
 			"description": "The expression to evaluate",
 			"name": "Expression",
 			"type": "string",
-			"value": "if( humidity > 50, 1, 0)"
+			"value": "humidity > 50"
 		}
 	}
  
  * Expression is composed of datapoint values within given asset name.
  * And if the value of boolean expression toggles, then the notification is sent.
+ *
+ * NOTE:
+ * Datapoint names and values are dynamically added when "plugin_eval" is called
  */
 
-#define xstr(s) str(s)
-#define str(s) #s
+#define DEFER(x) x
+#define TO_STRING(...) DEFER(TO_STRING_)(__VA_ARGS__)
+#define TO_STRING_(...) #__VA_ARGS__
+#define QUOTE(...) TO_STRING(__VA_ARGS__)
 
-#define RULE_DEFAULT_CONFIG \
-			"\"description\": { " \
-				"\"description\": \"Generate a notification using an expression evaluation.\", " \
-				"\"type\": \"string\", " \
-				"\"default\": \"Generate a notification using an expression evaluation.\", " \
-				"\"displayName\" : \"Rule\", " \
-				"\"order\": \"1\" }, " \
-			"\"asset\": { \"description\": \"The asset name for which notifications will be generated.\", " \
-				"\"type\": \"string\", " \
-				"\"default\": \"\", \"displayName\" : \"Asset name\", \"order\": \"2\"}, " \
-			"\"expression\": {\"description\": \"The expression to evaluate.\", " \
-				"\"name\": \"Expression\", \"type\": \"string\", \"default\": \"\", " \
-				"\"displayName\" : \"The expression to evaluate.\", \"order\": \"3\"}"
-
-#define BUITIN_RULE_DESC "\"plugin\": {\"description\": \"" RULE_NAME " notification rule\", " \
-			"\"type\": \"string\", \"default\": \"" RULE_NAME "\", \"readonly\": \"true\"}"
-
-#define RULE_DEFAULT_CONFIG_INFO "{" BUITIN_RULE_DESC ", " RULE_DEFAULT_CONFIG "}"
+const char * defaultConfiguration = QUOTE(
+{
+	"plugin" : {
+		"description" : RULE_DESCRIPTION,
+		"type" : "string",
+		"default" :  RULE_NAME,
+		"readonly" : "true"
+	},
+	"description" : {
+		"description" : "Generate a notification using an expression evaluation.",
+		"type" : "string",
+		"default" : "Generate a notification using an expression evaluation.",
+		"displayName" : "Rule",
+		"order" : "1"
+	},
+	"asset" : {
+		"description" : "The asset name for which notifications will be generated.",
+		"type" : "string",
+		"default" : "",
+		"displayName" : "Asset name",
+		"order" : "2"
+	},
+	"expression" : {
+		"description" : "Expression to apply.",
+		"name" : "Expression",
+		"type" : "string",
+		"default": "",
+		"displayName" : "Expression to apply",
+		"order" : "3"
+	}
+});
 
 using namespace std;
 
@@ -88,7 +97,7 @@ static PLUGIN_INFORMATION ruleInfo = {
 	0,				// Flags
 	PLUGIN_TYPE_NOTIFICATION_RULE,	// Type
 	"1.0.0",			// Interface version
-	RULE_DEFAULT_CONFIG_INFO	// Configuration
+	defaultConfiguration		// Configuration
 };
 
 /**
@@ -320,7 +329,7 @@ bool SimpleExpression::evalAsset(const Value& assetValue)
 	// Parse and comoile expression with variables
 	if (!this->getEvaluator()->parserCompile(expression))
 	{
-		Logger::getLogger()->fatal("Failed to compile expression: Error: %s\tExpression: %s",
+		Logger::getLogger()->error("Failed to compile expression: Error: %s\tExpression: %s",
 					   this->getEvaluator()->getError().c_str(),
 					   expression.c_str());
 
@@ -332,6 +341,7 @@ bool SimpleExpression::evalAsset(const Value& assetValue)
 
 	Logger::getLogger()->debug("SimpleExpression::Evaluator::evaluate(): m_expression.value()=%lf",
 				   evaluation);
+
 	// Checks
 	if (std::isnan(evaluation) || !isfinite(evaluation))
 	{
@@ -380,10 +390,12 @@ bool SimpleExpression::configure(const ConfigCategory& config)
 	if (assetName.empty() ||
 	    expression.empty())
 	{
-		Logger::getLogger()->fatal("Empty values for 'asset' or 'esxpression'");
-		return false;
+		Logger::getLogger()->warn("Empty values for 'asset' or 'expression'");
+
+		// Return true, so it can be configured later
+		return true;
 	}
-	
+
 	this->lockConfig();
 
 	if (m_triggerExpression)
