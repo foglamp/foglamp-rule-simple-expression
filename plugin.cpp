@@ -5,7 +5,7 @@
  *
  * Released under the Apache 2.0 Licence
  *
- * Author: Amandeep Singh Arora
+ * Author: Amandeep Singh Arora, Massimiliano Pinto
  */
 
 #include <plugin_api.h>
@@ -19,12 +19,10 @@
 #include "simple_expression.h"
 
 #define RULE_NAME "SimpleExpression"
+#define RULE_DESCRIPTION  "SimpleExpression notification rule"
 
 /**
- * Rule specific default configuration
- *
- * The "rule_config" property is a JSON object with asset name, 
- * list of datapoints used in expression and the boolean expression itself:
+ * Plugin configuration
  *
  * Example:
     {
@@ -32,43 +30,57 @@
 			"description": "The asset name for which notifications will be generated.",
 			"name": "modbus"
 		},
-		"datapoints": [{
-			"type": "float",
-			"name": "humidity"
-		}, {
-			"type": "float",
-			"name": "temperature"
-		}],
 		"expression": {
 			"description": "The expression to evaluate",
 			"name": "Expression",
 			"type": "string",
-			"value": "if( humidity > 50, 1, 0)"
+			"value": "humidity > 50"
 		}
 	}
  
  * Expression is composed of datapoint values within given asset name.
  * And if the value of boolean expression toggles, then the notification is sent.
+ *
+ * NOTE:
+ * Datapoint names and values are dynamically added when "plugin_eval" is called
  */
 
-#define xstr(s) str(s)
-#define str(s) #s
+#define DEFER(x) x
+#define TO_STRING(...) DEFER(TO_STRING_)(__VA_ARGS__)
+#define TO_STRING_(...) #__VA_ARGS__
+#define QUOTE(...) TO_STRING(__VA_ARGS__)
 
-#define DEF_RULE_CFG_VALUE  "{\"asset\":{\"description\":\"The asset name for which notifications will be generated.\",\"name\":\"modbus\"},\"datapoints\":[{\"type\":\"float\",\"name\":\"humidity\"},{\"type\":\"float\",\"name\":\"temperature\"}],\"expression\":{\"description\":\"The expression to evaluate\",\"name\":\"Expression\",\"type\":\"string\",\"value\":\"if( ((humidity > 50)), 1, 0)\"}}"
-
-#define RULE_DEFAULT_CONFIG \
-			"\"description\": { " \
-				"\"description\": \"Generate a notification if all configured assets trigger\", " \
-				"\"type\": \"string\", " \
-				"\"default\": \"Generate a notification if all configured assets trigger\", " \
-				"\"displayName\" : \"Rule\", " \
-				"\"order\": \"1\" }, " \
-			"\"rule_config\": { \"description\": \"The array of rules.\", \"type\": \"JSON\", \"default\": " xstr(DEF_RULE_CFG_VALUE) ", \"displayName\" : \"Configuration\", \"order\": \"2\" }"
-
-#define BUITIN_RULE_DESC "\"plugin\": {\"description\": \"" RULE_NAME " notification rule\", " \
-			"\"type\": \"string\", \"default\": \"" RULE_NAME "\", \"readonly\": \"true\"}"
-
-#define RULE_DEFAULT_CONFIG_INFO "{" BUITIN_RULE_DESC ", " RULE_DEFAULT_CONFIG "}"
+const char * defaultConfiguration = QUOTE(
+{
+	"plugin" : {
+		"description" : RULE_DESCRIPTION,
+		"type" : "string",
+		"default" :  RULE_NAME,
+		"readonly" : "true"
+	},
+	"description" : {
+		"description" : "Generate a notification using an expression evaluation.",
+		"type" : "string",
+		"default" : "Generate a notification using an expression evaluation.",
+		"displayName" : "Rule",
+		"order" : "1"
+	},
+	"asset" : {
+		"description" : "The asset name for which notifications will be generated.",
+		"type" : "string",
+		"default" : "",
+		"displayName" : "Asset name",
+		"order" : "2"
+	},
+	"expression" : {
+		"description" : "Expression to apply.",
+		"name" : "Expression",
+		"type" : "string",
+		"default": "",
+		"displayName" : "Expression to apply",
+		"order" : "3"
+	}
+});
 
 using namespace std;
 
@@ -85,7 +97,7 @@ static PLUGIN_INFORMATION ruleInfo = {
 	0,				// Flags
 	PLUGIN_TYPE_NOTIFICATION_RULE,	// Type
 	"1.0.0",			// Interface version
-	RULE_DEFAULT_CONFIG_INFO	// Configuration
+	defaultConfiguration		// Configuration
 };
 
 /**
@@ -113,7 +125,7 @@ PLUGIN_HANDLE plugin_init(const ConfigCategory& config)
 		Logger::getLogger()->info("plugin_init failed");
 		handle = NULL;
 	}
-	
+
 	return (PLUGIN_HANDLE)handle;
 }
 
@@ -194,7 +206,7 @@ bool plugin_eval(PLUGIN_HANDLE handle,
 
 	bool eval = false;
 	SimpleExpression* rule = (SimpleExpression *)handle;
-	
+
 	map<std::string, RuleTrigger *>& triggers = rule->getTriggers();
 
 	// Iterate throgh all configured assets
@@ -272,26 +284,75 @@ void plugin_reconfigure(PLUGIN_HANDLE handle,
  */
 bool SimpleExpression::evalAsset(const Value& assetValue)
 {
+	bool foundDatapoints = false;
 	bool assetEval = false;
 	
-	vector<Datapoint *> vec;
-
-	for (auto & m : assetValue.GetObject())
+	for (auto &m : assetValue.GetObject())
 	{
+		foundDatapoints = true;
+		double value;
 		if (m.value.IsDouble())
 		{
-			DatapointValue dpv((double) m.value.GetDouble());
-			vec.emplace_back(new Datapoint(m.name.GetString(), dpv));
+			value = (double) m.value.GetDouble();
 		}
 		else if (m.value.IsNumber())
 		{
-			DatapointValue dpv((long) m.value.GetInt());
-			vec.emplace_back(new Datapoint(m.name.GetString(), dpv));
+			value = (double) m.value.GetInt();
+		}
+		else
+		{
+			value = 0.0;
+		}
+
+		if (m.value.IsDouble() ||
+		    m.value.IsNumber())
+		{
+			// Add variable
+			this->getEvaluator()->addVariable(m.name.GetString(), value);
 		}
 	}
-	
-	assetEval = m_triggerExpression->evaluate(vec);
-	Logger::getLogger()->debug("m_triggerExpression->evaluate() returned assetEval=%s", assetEval?"true":"false");
+
+	if (!foundDatapoints)
+	{
+		Logger::getLogger()->info("Couldn't find any valid datapoint in plugin_eval input data");
+		return false;
+	}
+
+	typedef exprtk::parser_error::type error_t;
+
+	// Get expression from config
+	string expression = this->getTrigger();
+
+	// Update SymbolTable of Evaluator
+	this->getEvaluator()->registerSymbolTable();
+
+	// Parse and comoile expression with variables
+	if (!this->getEvaluator()->parserCompile(expression))
+	{
+		Logger::getLogger()->error("Failed to compile expression: Error: %s\tExpression: %s",
+					   this->getEvaluator()->getError().c_str(),
+					   expression.c_str());
+
+		return false;
+	}
+
+	// Evaluate the expression
+	double evaluation = this->getEvaluator()->evaluate();
+
+	Logger::getLogger()->debug("SimpleExpression::Evaluator::evaluate(): m_expression.value()=%lf",
+				   evaluation);
+
+	// Checks
+	if (std::isnan(evaluation) || !isfinite(evaluation))
+	{
+		Logger::getLogger()->error("SimpleExpression::evalAsset(): unable to evaluate expression");
+	}
+
+	// Set result
+	assetEval = (evaluation ==  1.0);
+
+	Logger::getLogger()->debug("m_triggerExpression->evaluate() returned assetEval=%s",
+				   assetEval ? "true" : "false");
 
 	// Return evaluation for current asset
 	return assetEval;
@@ -305,7 +366,7 @@ bool SimpleExpression::evalAsset(const Value& assetValue)
  */
 SimpleExpression::SimpleExpression() : BuiltinRule()
 {
-	m_triggerExpression = NULL;
+	m_triggerExpression = new Evaluator();
 }
 
 /**
@@ -323,187 +384,100 @@ SimpleExpression::~SimpleExpression()
  */
 bool SimpleExpression::configure(const ConfigCategory& config)
 {
-	string JSONrules = config.getValue("rule_config");
-	//Logger::getLogger()->debug("JSONrules=%s", JSONrules.c_str());
+	string assetName =  config.getValue("asset");
+	string expression =  config.getValue("expression");
 
-	Document doc;
-	doc.Parse(JSONrules.c_str());
-
-	if (!doc.HasParseError())
+	if (assetName.empty() ||
+	    expression.empty())
 	{
-		if (!doc.HasMember("asset") || !doc.HasMember("datapoints") || !doc.HasMember("expression"))
-		{
-			return false;
-		}
+		Logger::getLogger()->warn("Empty values for 'asset' or 'expression'");
 
-		const Value& asset = doc["asset"];
-		string assetName = asset["name"].GetString();
-		if (assetName.empty())
-		{
-			return false;
-		}
-
-		const Value& exprVal = doc["expression"];
-		string expr = exprVal["value"].GetString();
-		if (expr.empty())
-		{
-			return false;
-		}
-		
-		// evaluation_type can be empty, it means latest value
-		
-		const Value& datapoints = doc["datapoints"];
-		bool foundDatapoints = false;
-
-		if (datapoints.IsArray())
-		{
-			vector<Datapoint *>	vec;
-			for (auto & d : datapoints.GetArray())
-			{
-				if (d.HasMember("name"))
-				{
-					foundDatapoints = true;
-					string dataPointName = d["name"].GetString();
-					string datatype = d["type"].GetString();
-					DatapointValue *dpv;
-					if (datatype.compare("integer")==0)
-						dpv = new DatapointValue(1L);
-					else if (datatype.compare("float")==0)
-						dpv = new DatapointValue(1.0f);
-					else
-					{
-						Logger::getLogger()->info("Cannot handle datapoint: name=%s, type=%s, skipping...", dataPointName.c_str(), datatype.c_str());
-						continue;
-					}
-					vec.emplace_back(new Datapoint(dataPointName, *dpv));
-					//Logger::getLogger()->info("Added DP to vector= {%s : %s}", dataPointName.c_str(), dpv->toString().c_str());
-					delete dpv;
-				}
-			}
-			if (vec.size() <= 0)
-			{
-				Logger::getLogger()->info("Couldn't find any valid datapoint in expr rule plugin config");
-				return false;
-			}
-			else
-			{
-				//Logger::getLogger()->info("Found %d datapoints in expr rule plugin config", vec.size());
-
-				// Configuration change is protected by a lock
-				this->lockConfig();
-
-				try
-				{
-					m_triggerExpression = new Evaluator(vec, expr);
-				}
-				catch (...)
-				{
-					this->unlockConfig();
-					Logger::getLogger()->error("SimpleExpression::configure() failed");
-					return false;
-				}
-
-				if (this->hasTriggers())
-				{       
-					this->removeTriggers();
-				}
-				this->addTrigger(assetName, NULL);
-				
-				// Release lock
-				this->unlockConfig();
-
-				return true;
-			}
-		}
+		// Return true, so it can be configured later
+		return true;
 	}
-	return false;
+
+	this->lockConfig();
+
+	if (m_triggerExpression)
+	{
+		delete m_triggerExpression;
+		m_triggerExpression = new Evaluator();
+	}
+	this->setTrigger(expression);
+
+	if (this->hasTriggers())
+	{       
+		this->removeTriggers();
+	}
+	this->addTrigger(assetName, NULL);
+		
+	// Release lock
+	this->unlockConfig();
+
+	return true;
 }
 
 /**
  * Constructor for the evaluator class. This holds the expressions and
  * variable bindings used to execute the triggers.
- *
- * @param datapoints	Vector of datapoints of which expression is composed
- * @param expression	The expression to evaluate
  */
-SimpleExpression::Evaluator::Evaluator(vector<Datapoint *> &datapoints, const string& expression) : m_varCount(0)
+SimpleExpression::Evaluator::Evaluator() : m_varCount(0)
 {
-	for (auto & dp : datapoints)
-	{
-		DatapointValue& dpvalue = dp->getData();
-		if (dpvalue.getType() == DatapointValue::T_INTEGER ||
-				dpvalue.getType() == DatapointValue::T_FLOAT)
-		{
-			m_variableNames[m_varCount++] = dp->getName();
-		}
-		if (m_varCount == MAX_EXPRESSION_VARIABLES)
-		{
-			Logger::getLogger()->error("Too many datapoints in reading (>%d)", MAX_EXPRESSION_VARIABLES);
-			break;
-		}
-	}
-
-	for (int i = 0; i < m_varCount; i++)
-	{
-		m_variables[i] = NAN;
-		m_symbolTable.add_variable(m_variableNames[i], m_variables[i]);
-	}
-
-	typedef exprtk::parser_error::type error_t;
-	
-	bool rv = true;
-	rv = m_symbolTable.add_constants();
+	bool rv = m_symbolTable.add_constants();
 	if (rv == false)
 	{
 		Logger::getLogger()->error("m_symbolTable.add_constants() failed");
 		throw new exception();
 	}
 	m_expression.register_symbol_table(m_symbolTable);
-	rv=true;
-	rv = m_parser.compile(expression.c_str(), m_expression);
-	if (rv == false)
-	{
-		Logger::getLogger()->error("Failed to compile expression: Error: %s\tExpression: %s", m_parser.error().c_str(), expression.c_str());
-		throw new exception();
-	}
 }
 
 /**
- * Evaluate an expression using the reading provided and return true of false. 
+ * Add a variable and its value to Evaluator symbolTable
+ * If variable is already present just update the value
  *
- * @param	datapoints	The datapoints in reading from which variables values are taken
- * @return	Bool result of evaluatign the expression
+ * We can add up to MAX_EXPRESSION_VARIABLES variables
  */
-bool SimpleExpression::Evaluator::evaluate(vector<Datapoint *>& datapoints)
+void SimpleExpression::Evaluator::addVariable(const std::string& dapointName,
+					      double value)
 {
-	for (auto it = datapoints.begin(); it != datapoints.end(); it++)
+	if (!m_varCount)
 	{
-		string name = (*it)->getName();
-		double value = 0.0;
-		DatapointValue& dpvalue = (*it)->getData();
-		if (dpvalue.getType() == DatapointValue::T_INTEGER)
-		{
-			value = dpvalue.toInt();
-		}
-		else if (dpvalue.getType() == DatapointValue::T_FLOAT)
-		{	
-			//double d = static_cast <double> (rand()) /( static_cast <double> (RAND_MAX/(100)));
-			value = dpvalue.toDouble();
-			//Logger::getLogger()->debug("SimpleExpression::Evaluator::evaluate(): name=%s, value=%lf", name.c_str(), value);
-		}
-		
+		m_variableNames[0] = dapointName;
+		m_variables[0] = value;
+		m_symbolTable.add_variable(m_variableNames[0],
+					   m_variables[0]);
+		m_varCount++;
+	}
+	else
+	{
+		bool found = false;
 		for (int i = 0; i < m_varCount; i++)
 		{
-			if (m_variableNames[i].compare(name) == 0)
+			if (m_variableNames[i].compare(dapointName) == 0)
 			{
+				found = true;
 				m_variables[i] = value;
 				break;
 			}
 		}
-	}
-	Logger::getLogger()->debug("SimpleExpression::Evaluator::evaluate(): m_expression.value()=%lf", m_expression.value());
-	if (std::isnan(m_expression.value()))
-		Logger::getLogger()->error("SimpleExpression::Evaluator::evaluate(): unable to evaluate expression");
-	return (m_expression.value() == 1.0);
-}
 
+		if (!found)
+		{
+			if (m_varCount < MAX_EXPRESSION_VARIABLES)
+			{
+				m_variableNames[m_varCount] = dapointName;
+				m_variables[m_varCount] = value;
+				m_symbolTable.add_variable(m_variableNames[m_varCount],
+							   m_variables[m_varCount]);
+				m_varCount++;
+			}
+			else
+			{
+				Logger::getLogger()->warn("Already set %d variables, can not add the new one '%s'",
+							  MAX_EXPRESSION_VARIABLES,
+							  dapointName.c_str());
+			}
+		}
+	}
+}
