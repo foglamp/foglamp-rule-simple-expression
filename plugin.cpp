@@ -45,10 +45,6 @@
  * Datapoint names and values are dynamically added when "plugin_eval" is called
  */
 
-#define DEFER(x) x
-#define TO_STRING(...) DEFER(TO_STRING_)(__VA_ARGS__)
-#define TO_STRING_(...) #__VA_ARGS__
-#define QUOTE(...) TO_STRING(__VA_ARGS__)
 
 const char * defaultConfiguration = QUOTE(
 {
