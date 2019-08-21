@@ -19,7 +19,7 @@
 #include "simple_expression.h"
 
 #define RULE_NAME "SimpleExpression"
-#define RULE_DESCRIPTION  "SimpleExpression notification rule"
+#define RULE_DESCRIPTION  "Generate a notification based on the evaluation of a user provided expression"
 
 /**
  * Plugin configuration
@@ -59,14 +59,14 @@ const char * defaultConfiguration = QUOTE(
 		"type" : "string",
 		"default" : "Generate a notification using an expression evaluation.",
 		"displayName" : "Rule",
-		"order" : "1"
+		"readonly" : "true"
 	},
 	"asset" : {
 		"description" : "The asset name for which notifications will be generated.",
 		"type" : "string",
 		"default" : "",
 		"displayName" : "Asset name",
-		"order" : "2"
+		"order" : "1"
 	},
 	"expression" : {
 		"description" : "Expression to apply.",
@@ -74,7 +74,7 @@ const char * defaultConfiguration = QUOTE(
 		"type" : "string",
 		"default": "",
 		"displayName" : "Expression to apply",
-		"order" : "3"
+		"order" : "2"
 	}
 });
 
