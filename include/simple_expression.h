@@ -1,7 +1,7 @@
 #ifndef _SIMPLE_EXPRESSION_RULE_H
 #define _SIMPLE_EXPRESSION_RULE_H
 /*
- * FogLAMP SimpleExpression class
+ * Fledge SimpleExpression class
  *
  * Copyright (c) 2019 Dianomic Systems
  *

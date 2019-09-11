@@ -1,5 +1,5 @@
 /**
- * FogLAMP SimpleExpression notification rule plugin
+ * Fledge SimpleExpression notification rule plugin
  *
  * Copyright (c) 2019 Dianomic Systems
  *
