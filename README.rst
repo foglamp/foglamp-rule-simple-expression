@@ -4,33 +4,51 @@ FogLAMP SimpleExpression notification rule plugin
 
 An expression based notification rule plugin:
 
-The "rule_config" property is a JSON object with asset name, 
-list of datapoints used in expression and the boolean expression itself:
+The configuration items  are:
+
+  - "asset" is the asset name for which notifications will be generated.
+  - "expression" is the expression to evaluate in order to send notifications
+
+Note this plugin is designed to work with a single asset name.
 
 Example:
-    {
-		"asset": {
-			"description": "The asset name for which notifications will be generated.",
-			"name": "modbus"
-		},
-		"datapoints": [{
-			"type": "float",
-			"name": "humidity"
-		}, {
-			"type": "float",
-			"name": "temperature"
-		}],
-		"expression": {
-			"description": "The expression to evaluate",
-			"name": "Expression",
-			"type": "string",
-			"value": "if( humidity > 50, 1, 0)"
-		}
-	}
- 
-Expression is composed of datapoint values within given asset name.
-And if the value of boolean expression toggles, then the notification is sent.
 
+.. code-block:: console
+
+    {
+	"asset": {
+		"description": "The asset name for which notifications will be generated.",
+		"name": "modbus"
+	},
+	"expression": {
+		"description": "The expression to evaluate",
+		"name": "Expression",
+		"type": "string",
+		"value": "humidity > 50"
+	}
+    }
+  
+Expression is composed of datapoint values within given asset name.
+
+There is no need to provide datapoint names because names and values
+are dynamically added when "plugin_eval" is called.
+
+If the value of expression is true, then the notification is sent.
+
+Expression may contain any of the following...
+
+- Mathematical operators (+, -, *, /, %, ^)
+
+- Functions (min, max, avg, sum, abs, ceil, floor, round, roundn, exp, log, log10, logn, pow, root, sqrt, clamp, inrange, swap)
+
+- Trigonometry (sin, cos, tan, acos, asin, atan, atan2, cosh, cot, csc, sec, sinh, tanh, d2r, r2d, d2g, g2d, hyp)
+
+- Equalities & Inequalities (=, ==, <>, !=, <, <=, >, >=)
+
+- Logical operators (and, nand, nor, not, or, xor, xnor, mand, mor)
+
+The plugin uses the C++ Mathematical Expression Toolkit Library
+by Arash Partow and is used under the MIT licence granted on that toolkit.
 
 Build
 -----
@@ -103,57 +121,3 @@ Examples:
   $ cmake -DFOGLAMP_INSTALL=/home/source/develop/FogLAMP ..
 
   $ cmake -DFOGLAMP_INSTALL=/usr/local/foglamp ..
-
-**********************************************
-Packaging for 'SimpleExpression notification' plugin 
-**********************************************
-
-This repo contains the scripts used to create a foglamp-rule-simple-expression Debian package.
-
-The make_deb script
-===================
-
-Run the make_deb command after compiling the plugin:
-
-.. code-block:: console
-
-  $ ./make_deb help
-  make_deb {x86|arm} [help|clean|cleanall]
-  This script is used to create the Debian package of FoglAMP C++ 'SimpleExpression notification' plugin
-  Arguments:
-   help     - Display this help text
-   x86      - Build an x86_64 package
-   arm      - Build an armv7l package
-   clean    - Remove all the old versions saved in format .XXXX
-   cleanall - Remove all the versions, including the last one
-  $
-
-Building a Package
-==================
-
-Finally, run the ``make_deb`` command:
-
-.. code-block:: console
-
-   $ ./make_deb
-   The package root directory is                : /home/ubuntu/source/foglamp-rule-simple-expression
-   The FogLAMP required version                 : >=1.5
-   The Service notification required version    : >=1.5.2
-   The package will be built in                 : /home/ubuntu/source/foglamp-rule-simple-expression/packages/build
-   The architecture is set as                   : x86_64
-   The package name is                          : foglamp-rule-simple-expression-1.5.2-x86_64
-
-   ....
-
-   Populating the package and updating version file...Done.
-   Building the new package...
-   dpkg-deb: building package 'foglamp-rule-simple-expression' in 'foglamp-rule-simple-expression-1.5.2-x86_64.deb'.
-   Building Complete.
-   $
-
-Cleaning the Package Folder
-===========================
-
-Use the ``clean`` option to remove all the old packages and the files used to make the package.
-
-Use the ``cleanall`` option to remove all the packages and the files used to make the package.
