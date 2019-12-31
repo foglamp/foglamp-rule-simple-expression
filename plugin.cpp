@@ -239,10 +239,15 @@ bool plugin_eval(PLUGIN_HANDLE handle,
 string plugin_reason(PLUGIN_HANDLE handle)
 {
 	SimpleExpression* rule = (SimpleExpression *)handle;
+	// Get state, assets and timestamp
+	BuiltinRule::TriggerInfo info;
+	rule->getFullState(info);
 
 	string ret = "{ \"reason\": \"";
-	ret += rule->getState() == SimpleExpression::StateTriggered ? "triggered" : "cleared";
-	ret += "\" }";
+	ret += info.getState() == BuiltinRule::StateTriggered ? "triggered" : "cleared";
+	ret += "\"";
+	ret += ", \"asset\": " + info.getAssets() + ", \"timestamp\": \"" + info.getUTCDateTime() + "\"";
+	ret += " }";
 
 	Logger::getLogger()->debug("plugin_reason(): ret=%s", ret.c_str());
 
